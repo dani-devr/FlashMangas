@@ -1,5 +1,5 @@
 
-import { JikanManga, MangaDexManga, MangaDexChapter } from '../types';
+import { JikanManga, MangaDexManga, MangaDexChapter, SearchFilters } from '../types';
 
 // --- CORS PROXY ROTATION ---
 const CORS_PROXIES = [
@@ -112,12 +112,23 @@ export const getManhwa = async (): Promise<JikanManga[]> => {
   return fetchJikan('/manga?type=manhwa&order_by=popularity&sort=desc&limit=25&sfw=true');
 };
 
-export const searchJikan = async (query: string, allowNsfw: boolean = false): Promise<JikanManga[]> => {
-  // If NSFW is allowed, remove sfw=true and the genre exclusions
+export const searchJikan = async (query: string, filters?: SearchFilters): Promise<JikanManga[]> => {
   let url = `/manga?q=${query}&limit=25`;
   
+  // Genres
+  if (filters?.genres && filters.genres.length > 0) {
+    url += `&genres=${filters.genres.join(',')}`;
+  }
+
+  // Status
+  if (filters?.status && filters.status !== 'any') {
+    url += `&status=${filters.status}`;
+  }
+
+  // NSFW Logic
+  const allowNsfw = filters?.nsfw ?? false;
   if (!allowNsfw) {
-    url += '&sfw=true&genres_exclude=12,49';
+    url += '&sfw=true&genres_exclude=12,49,28';
   }
   
   return fetchJikan(url, allowNsfw);
