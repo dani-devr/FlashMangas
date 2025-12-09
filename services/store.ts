@@ -1,26 +1,96 @@
+
 import { User } from '../types';
 
 const USER_KEY = 'flash_mangas_user';
 const COMMENTS_KEY = 'flash_mangas_comments';
 
+// Default Guest User
 const defaultUser: User = {
   username: 'Guest',
+  description: 'Just a manga enthusiast exploring the world of Flash Mangas.',
+  isLoggedIn: false,
   isPremium: false,
-  avatar: 'https://picsum.photos/200',
+  avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Guest',
   favorites: [],
   history: []
 };
 
 export const getUser = (): User => {
   const stored = localStorage.getItem(USER_KEY);
-  return stored ? JSON.parse(stored) : defaultUser;
+  if (stored) {
+    const parsed = JSON.parse(stored);
+    // Merge with default to ensure new fields exist for old users
+    return { ...defaultUser, ...parsed };
+  }
+  return defaultUser;
 };
 
 export const saveUser = (user: User) => {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
-  // Dispatch event for reactive updates across components
   window.dispatchEvent(new Event('user-update'));
 };
+
+// --- AUTH SIMULATION ---
+
+export const loginUser = async (email: string): Promise<User> => {
+    // Simulate API delay
+    await new Promise(r => setTimeout(r, 1500));
+    
+    const currentUser = getUser();
+    const updatedUser: User = {
+        ...currentUser,
+        username: email.split('@')[0],
+        email: email,
+        isLoggedIn: true,
+        provider: 'email',
+        joinedAt: new Date().toISOString(),
+        avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${email}`
+    };
+    saveUser(updatedUser);
+    return updatedUser;
+};
+
+export const signupUser = async (email: string, username: string): Promise<User> => {
+    await new Promise(r => setTimeout(r, 1500));
+    
+    const currentUser = getUser();
+    const updatedUser: User = {
+        ...currentUser,
+        username: username,
+        email: email,
+        isLoggedIn: true,
+        provider: 'email',
+        joinedAt: new Date().toISOString(),
+        avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${username}`
+    };
+    saveUser(updatedUser);
+    return updatedUser;
+};
+
+export const googleLogin = async (): Promise<User> => {
+    await new Promise(r => setTimeout(r, 2000)); // Google usually takes a bit
+    
+    const currentUser = getUser();
+    const updatedUser: User = {
+        ...currentUser,
+        username: 'Google User',
+        email: 'user@gmail.com',
+        isLoggedIn: true,
+        provider: 'google',
+        joinedAt: new Date().toISOString(),
+        avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=GoogleUser`,
+        isPremium: false 
+    };
+    saveUser(updatedUser);
+    return updatedUser;
+};
+
+export const logoutUser = () => {
+    localStorage.removeItem(USER_KEY);
+    window.dispatchEvent(new Event('user-update'));
+};
+
+// --- DATA HELPERS ---
 
 export const toggleFavorite = (mal_id: number) => {
   const user = getUser();
@@ -34,7 +104,8 @@ export const toggleFavorite = (mal_id: number) => {
 
 export const addToHistory = (mal_id: number, chapterId: string, title: string, chapterNum: string) => {
   const user = getUser();
-  const existingIndex = user.history.findIndex(h => h.mal_id === mal_id);
+  // Filter out duplicates based on chapterId or just move to top
+  const existingIndex = user.history.findIndex(h => h.chapterId === chapterId);
   
   const historyItem = {
     mal_id,
@@ -49,7 +120,7 @@ export const addToHistory = (mal_id: number, chapterId: string, title: string, c
   }
   
   user.history.unshift(historyItem);
-  user.history = user.history.slice(0, 20); // Keep last 20
+  user.history = user.history.slice(0, 50); // Keep last 50
   saveUser(user);
 };
 
