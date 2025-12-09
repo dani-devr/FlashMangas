@@ -822,6 +822,11 @@ const ProfilePage = () => {
       saveUser(updated);
       confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
   };
+
+  const toggleNsfw = () => {
+      const updated = { ...user, nsfwEnabled: !user.nsfwEnabled };
+      saveUser(updated);
+  };
   
   const handleLogout = () => {
     logoutUser();
@@ -885,6 +890,28 @@ const ProfilePage = () => {
           <div className="bg-[#111] p-6 rounded-2xl border border-white/5 text-center">
              <div className="text-3xl font-black text-white mb-1">{user.history.length}</div>
              <div className="text-xs text-gray-500 uppercase font-bold">Chapters Read</div>
+          </div>
+       </div>
+
+        {/* Settings Section */}
+       <div className="bg-[#111] border border-white/5 rounded-3xl p-6 mb-8">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+               <i className="fas fa-cog text-brand-500"></i> Settings
+          </h2>
+          
+          <div className="bg-white/5 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                  <h3 className="font-bold text-white flex items-center gap-2">
+                     <i className="fas fa-exclamation-triangle text-red-500"></i> NSFW Content
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">Show 18+ content in search results. Enable at your own discretion.</p>
+              </div>
+              <button 
+                onClick={toggleNsfw}
+                className={`w-14 h-7 rounded-full p-1 transition-all duration-300 ${user.nsfwEnabled ? 'bg-red-500' : 'bg-gray-700'}`}
+              >
+                  <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 ${user.nsfwEnabled ? 'translate-x-7' : 'translate-x-0'}`}></div>
+              </button>
           </div>
        </div>
 
@@ -955,7 +982,10 @@ export default function App() {
   const executeSearch = async (query: string) => {
     setLoadingSearch(true);
     try {
-      const res = await searchJikan(query);
+      // Pass the user's NSFW preference to the search function
+      // We grab the latest user state directly to ensure it's fresh
+      const currentUser = getUser();
+      const res = await searchJikan(query, currentUser.nsfwEnabled);
       setSearchResults(res);
     } catch (e) { console.error(e); } 
     finally { setLoadingSearch(false); }
