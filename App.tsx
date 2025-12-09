@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { getTrendingManga, getTopManga, getManhwa, searchJikan, getMangaById, findMangaDexId, getMangaDexChapters, getChapterImages } from './services/api';
@@ -253,10 +254,8 @@ const MangaDetails = () => {
   const { id } = useParams();
   const [manga, setManga] = useState<JikanManga | null>(null);
   const [chapters, setChapters] = useState<MangaDexChapter[]>([]);
-  const [totalChapters, setTotalChapters] = useState(0);
   const [mangaDexId, setMangaDexId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -278,9 +277,9 @@ const MangaDetails = () => {
         setMangaDexId(mdId);
         
         if (mdId) {
-          const { chapters: chaps, total } = await getMangaDexChapters(mdId, 500, 0);
+          // Fetch initial large batch (500)
+          const { chapters: chaps } = await getMangaDexChapters(mdId, 500, 0);
           setChapters(chaps);
-          setTotalChapters(total);
         }
       } catch (err) {
         setError('Failed to load details.');
@@ -290,15 +289,6 @@ const MangaDetails = () => {
     };
     fetchDetails();
   }, [id]);
-
-  const loadMoreChapters = async () => {
-    if (!mangaDexId || loadingMore) return;
-    setLoadingMore(true);
-    const offset = chapters.length;
-    const { chapters: newChaps } = await getMangaDexChapters(mangaDexId, 500, offset);
-    setChapters([...chapters, ...newChaps]);
-    setLoadingMore(false);
-  };
 
   const handleFav = () => {
     if (!manga) return;
@@ -371,7 +361,9 @@ const MangaDetails = () => {
              </div>
              <div className="max-h-[600px] overflow-y-auto custom-scrollbar p-2">
                 {chapters.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">No chapters found in Portuguese.</div>
+                  <div className="p-8 text-center text-gray-500">
+                    {mangaDexId ? "No readable chapters found." : "Manga not found on MangaDex."}
+                  </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-2">
                     {chapters.map((chap) => (
@@ -381,18 +373,21 @@ const MangaDetails = () => {
                         className="flex justify-between items-center p-3 rounded-lg hover:bg-white/5 transition-colors group"
                       >
                         <div className="flex items-center gap-3">
-                           <span className="text-gray-500 text-sm group-hover:text-brand-400">#{chap.attributes.chapter}</span>
-                           <span className="text-gray-300 text-sm truncate max-w-[200px]">{chap.attributes.title || `Chapter ${chap.attributes.chapter}`}</span>
+                           <span className="text-gray-500 text-sm group-hover:text-brand-400 w-16">#{chap.attributes.chapter}</span>
+                           <span className="text-gray-300 text-sm truncate max-w-[200px] md:max-w-xs">{chap.attributes.title || `Chapter ${chap.attributes.chapter}`}</span>
                         </div>
-                        <i className="fas fa-chevron-right text-xs text-gray-600 group-hover:text-white"></i>
+                        <div className="flex items-center gap-3">
+                           {/* Language Badge */}
+                           {chap.attributes.translatedLanguage && (
+                             <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${chap.attributes.translatedLanguage === 'pt-br' ? 'bg-green-900/50 text-green-400' : 'bg-blue-900/50 text-blue-400'}`}>
+                                {chap.attributes.translatedLanguage}
+                             </span>
+                           )}
+                           <i className="fas fa-chevron-right text-xs text-gray-600 group-hover:text-white"></i>
+                        </div>
                       </Link>
                     ))}
                   </div>
-                )}
-                {chapters.length < totalChapters && (
-                   <button onClick={loadMoreChapters} disabled={loadingMore} className="w-full py-3 text-sm text-brand-400 font-bold hover:bg-white/5 transition-colors">
-                     {loadingMore ? 'Loading...' : 'Load More'}
-                   </button>
                 )}
              </div>
            </div>
@@ -484,12 +479,21 @@ const Reader = () => {
            </div>
         ) : (
           <div className="flex flex-col pt-16">
-            {images.map((img, idx) => (
-              <img key={idx} src={img} className="w-full h-auto" loading="lazy" alt={`Page ${idx + 1}`} />
-            ))}
-            <div className="py-20 flex justify-center gap-6">
-              <button className="px-8 py-3 rounded-full bg-white/10 text-white font-bold" onClick={() => window.history.back()}>Close</button>
-            </div>
+            {images.length > 0 ? (
+                <>
+                {images.map((img, idx) => (
+                  <img key={idx} src={img} className="w-full h-auto" loading="lazy" alt={`Page ${idx + 1}`} />
+                ))}
+                <div className="py-20 flex justify-center gap-6">
+                  <button className="px-8 py-3 rounded-full bg-white/10 text-white font-bold" onClick={() => window.history.back()}>Close</button>
+                </div>
+                </>
+            ) : (
+                <div className="h-64 flex flex-col items-center justify-center text-gray-400">
+                    <p>Failed to load images.</p>
+                    <p className="text-xs mt-2">This chapter might be external or restricted.</p>
+                </div>
+            )}
           </div>
         )}
       </div>
