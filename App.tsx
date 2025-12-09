@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { getTrendingManga, getTopManga, getManhwa, searchJikan, getMangaById, findMangaDexId, getMangaDexChapters, getChapterImages } from './services/api';
+import { getTrendingManga, getTopManga, getManhwa, searchJikan, getMangaById, getUnifiedChapters, getChapterImages } from './services/api';
 import { getUser, saveUser, toggleFavorite, addToHistory, addLocalComment, getLocalComments, loginUser, signupUser, googleLogin, logoutUser, resetAppData } from './services/store';
 import { JikanManga, MangaDexChapter, User, Comment, SearchFilters } from './types';
 import confetti from 'canvas-confetti';
@@ -730,7 +730,6 @@ const MangaDetails = () => {
   const { id } = useParams();
   const [manga, setManga] = useState<JikanManga | null>(null);
   const [chapters, setChapters] = useState<MangaDexChapter[]>([]);
-  const [mangaDexId, setMangaDexId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [comments, setComments] = useState<Comment[]>([]);
@@ -749,13 +748,10 @@ const MangaDetails = () => {
         setIsFav(user.favorites.includes(data.mal_id));
         setComments(getLocalComments(data.mal_id));
         
-        const mdId = await findMangaDexId(data.title);
-        setMangaDexId(mdId);
-        
-        if (mdId) {
-          const { chapters: chaps } = await getMangaDexChapters(mdId, 500, 0);
-          setChapters(chaps);
-        }
+        // Unified Fetch (MangaDex + Comick)
+        const chaps = await getUnifiedChapters(data.title);
+        setChapters(chaps);
+
       } catch (err) {
         setError('Failed to load details.');
       } finally {
@@ -836,13 +832,13 @@ const MangaDetails = () => {
              <div className="max-h-[600px] overflow-y-auto custom-scrollbar p-2">
                 {chapters.length === 0 ? (
                   <div className="p-8 text-center text-gray-500">
-                    {mangaDexId ? "No readable chapters found." : "Manga not found on MangaDex."}
+                    No readable chapters found.
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-2">
                     {chapters.map((chap) => (
                       <Link 
-                        key={chap.id}
+                        key={`${chap.provider}-${chap.id}`}
                         to={`/read/${manga.mal_id}/${chap.id}/${encodeURIComponent(manga.title)}/${chap.attributes.chapter}`}
                         className="flex justify-between items-center p-3 rounded-lg hover:bg-white/5 transition-colors group"
                       >
@@ -851,6 +847,11 @@ const MangaDetails = () => {
                            <span className="text-gray-300 text-sm truncate max-w-[200px] md:max-w-xs">{chap.attributes.title || `Chapter ${chap.attributes.chapter}`}</span>
                         </div>
                         <div className="flex items-center gap-3">
+                           {/* Provider Badge */}
+                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ${chap.provider === 'mangadex' ? 'bg-[#ff6740]/20 text-[#ff6740]' : 'bg-blue-500/20 text-blue-400'}`}>
+                              {chap.provider === 'mangadex' ? 'MD' : 'CK'}
+                           </span>
+
                            {chap.attributes.translatedLanguage && (
                              <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${chap.attributes.translatedLanguage === 'pt-br' ? 'bg-green-900/50 text-green-400' : 'bg-blue-900/50 text-blue-400'}`}>
                                 {chap.attributes.translatedLanguage}
@@ -919,25 +920,17 @@ const Reader = () => {
       }
       
       // Fetch nearby chapters for navigation
-      // Note: This repeats a fetch but ensures reader is self-contained. 
-      // Ideally we'd store chapter list in Context/Store but for simplicity we fetch again.
       if (title) {
          try {
-             const mdId = await findMangaDexId(title);
-             if (mdId) {
-                const { chapters } = await getMangaDexChapters(mdId, 500, 0); // Re-fetch to find next/prev
-                const currentIndex = chapters.findIndex(c => c.id === chapterId);
+             // We use Unified Fetch here to be consistent with details page
+             const chapters = await getUnifiedChapters(title);
+             const currentIndex = chapters.findIndex(c => c.id === chapterId);
                 
-                if (currentIndex >= 0) {
-                    // Chapters are usually sorted DESCENDING by chapter number (Latest First)
-                    // So "Next Chapter" (chronologically next) is at currentIndex - 1
-                    // "Prev Chapter" (chronologically previous) is at currentIndex + 1
-                    
-                    const nextChap = currentIndex > 0 ? chapters[currentIndex - 1] : undefined;
-                    const prevChap = currentIndex < chapters.length - 1 ? chapters[currentIndex + 1] : undefined;
-                    
-                    setNavData({ next: nextChap, prev: prevChap });
-                }
+             if (currentIndex >= 0) {
+                 const nextChap = currentIndex > 0 ? chapters[currentIndex - 1] : undefined;
+                 const prevChap = currentIndex < chapters.length - 1 ? chapters[currentIndex + 1] : undefined;
+                 
+                 setNavData({ next: nextChap, prev: prevChap });
              }
          } catch(e) { console.error("Nav fetch failed", e); }
       }
