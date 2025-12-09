@@ -53,6 +53,8 @@ export interface User {
   isPremium: boolean;
   avatar: string;
   nsfwEnabled: boolean;
+  dataSaver: boolean;
+  notifications: boolean;
   favorites: number[];
   history: {
     mal_id: number;
