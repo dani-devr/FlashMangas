@@ -139,10 +139,12 @@ export const getMangaById = async (id: number): Promise<JikanManga> => {
 };
 
 
-// --- MANGADEX API (Reading) ---
+// --- UNIFIED MANGA API (MangaDex + Comick) ---
 
 const MANGADEX_BASE = 'https://api.mangadex.org';
+const COMICK_BASE = 'https://api.comick.io';
 
+// 1. MangaDex Functions
 export const findMangaDexId = async (title: string): Promise<string | null> => {
   try {
     const url = `${MANGADEX_BASE}/manga?title=${encodeURIComponent(title)}&order[followedCount]=desc&limit=1&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic`; 
@@ -155,78 +157,185 @@ export const findMangaDexId = async (title: string): Promise<string | null> => {
   }
 };
 
-// Process chapters: Filter external, deduplicate, and sort
-const processChapters = (rawChapters: any[]): MangaDexChapter[] => {
-  // 1. Filter out external links (pages = 0 or externalUrl exists) or null chapters
-  const valid = rawChapters.filter(ch => {
-      const attr = ch.attributes;
-      return (attr.pages > 0) && !attr.externalUrl && attr.chapter; 
-  });
-
-  // 2. Deduplicate by chapter number
-  // Using a map to keep the first occurrence (since we sort by desc, this usually keeps the latest upload)
-  const seen = new Set();
-  const unique: MangaDexChapter[] = [];
-  
-  for (const ch of valid) {
-      const num = ch.attributes.chapter;
-      if (!seen.has(num)) {
-          seen.add(num);
-          unique.push(ch);
-      }
-  }
-  
-  // 3. Sort numerically descending
-  return unique.sort((a, b) => parseFloat(b.attributes.chapter) - parseFloat(a.attributes.chapter));
-};
-
-export const getMangaDexChapters = async (mangaDexId: string, limit = 500, offset = 0): Promise<{ chapters: MangaDexChapter[], total: number }> => {
+export const getMangaDexChapters = async (mangaDexId: string, lang: string): Promise<MangaDexChapter[]> => {
   try {
-    const fetchLang = async (lang: string) => {
-        // limit 500 is the max for feed often allowed
-        const url = `${MANGADEX_BASE}/manga/${mangaDexId}/feed?translatedLanguage[]=${lang}&order[chapter]=desc&limit=${limit}&offset=${offset}&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeFutureUpdates=0`;
-        const response = await fetchWithProxy(url);
-        return await response.json();
-    };
-
-    // Try PT-BR first
-    let data = await fetchLang('pt-br');
-    
-    // Fallback to EN if empty (and if it's the first page/load)
-    if ((!data.data || data.data.length === 0) && offset === 0) {
-        data = await fetchLang('en');
-    }
-
-    const raw = data.data || [];
-    const uniqueChapters = processChapters(raw);
-
-    return {
-      chapters: uniqueChapters,
-      // We return the count of unique valid chapters. 
-      // Note: This effectively disables "server-side" pagination logic in the UI for simplicity, 
-      // but ensures the user sees a clean list of up to 500 unique chapters.
-      total: uniqueChapters.length 
-    };
-  } catch (error) {
-    console.error("MangaDex Feed Error", error);
-    return { chapters: [], total: 0 };
-  }
-};
-
-export const getChapterImages = async (chapterId: string): Promise<string[]> => {
-  try {
-    const url = `${MANGADEX_BASE}/at-home/server/${chapterId}`;
+    const url = `${MANGADEX_BASE}/manga/${mangaDexId}/feed?translatedLanguage[]=${lang}&order[chapter]=desc&limit=500&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeFutureUpdates=0`;
     const response = await fetchWithProxy(url);
     const data = await response.json();
     
-    if (data.baseUrl && data.chapter && data.chapter.data) {
-        const baseUrl = data.baseUrl;
-        const hash = data.chapter.hash;
-        return data.chapter.data.map((file: string) => `${baseUrl}/data/${hash}/${file}`);
+    if (!data.data) return [];
+
+    const rawChapters = data.data;
+
+    // Process: Filter external, deduplicate, format
+    const valid = rawChapters.filter((ch: any) => {
+      const attr = ch.attributes;
+      return (attr.pages > 0) && !attr.externalUrl && attr.chapter; 
+    });
+
+    const seen = new Set();
+    const unique: MangaDexChapter[] = [];
+
+    for (const ch of valid) {
+        const num = ch.attributes.chapter;
+        if (!seen.has(num)) {
+            seen.add(num);
+            unique.push({
+              id: ch.id,
+              provider: 'mangadex',
+              attributes: {
+                volume: ch.attributes.volume,
+                chapter: ch.attributes.chapter,
+                title: ch.attributes.title,
+                publishAt: ch.attributes.publishAt,
+                pages: ch.attributes.pages,
+                translatedLanguage: ch.attributes.translatedLanguage,
+                externalUrl: ch.attributes.externalUrl
+              }
+            });
+        }
     }
-    return [];
+    
+    return unique.sort((a, b) => parseFloat(b.attributes.chapter) - parseFloat(a.attributes.chapter));
   } catch (error) {
-    console.error("MangaDex Image Error", error);
+    console.error("MangaDex Feed Error", error);
     return [];
   }
+};
+
+// 2. Comick Functions
+export const findComickId = async (title: string): Promise<string | null> => {
+    try {
+        const url = `${COMICK_BASE}/v1.0/search?q=${encodeURIComponent(title)}&limit=1`;
+        const response = await fetchWithProxy(url);
+        const data = await response.json();
+        return data.length > 0 ? data[0].hid : null;
+    } catch (e) {
+        console.error("Comick Search Error", e);
+        return null;
+    }
+};
+
+export const getComickChapters = async (comickId: string, lang: string): Promise<MangaDexChapter[]> => {
+    try {
+        const url = `${COMICK_BASE}/comic/${comickId}/chapters?lang=${lang}&limit=1000`;
+        const response = await fetchWithProxy(url);
+        const data = await response.json();
+        
+        if (!data.chapters) return [];
+        
+        const raw = data.chapters;
+        
+        const unique: MangaDexChapter[] = [];
+        const seen = new Set();
+        
+        // Comick structure is different, map to unified format
+        for (const ch of raw) {
+            if (!ch.chap) continue;
+            if (seen.has(ch.chap)) continue;
+            seen.add(ch.chap);
+            
+            unique.push({
+                id: ch.hid, // Comick Chapter HID
+                provider: 'comick',
+                attributes: {
+                    volume: ch.vol,
+                    chapter: ch.chap,
+                    title: ch.title,
+                    publishAt: ch.created_at,
+                    pages: 10, // Comick doesn't give page count in list, dummy value
+                    translatedLanguage: lang,
+                    externalUrl: null
+                }
+            });
+        }
+        
+        return unique.sort((a, b) => parseFloat(b.attributes.chapter) - parseFloat(a.attributes.chapter));
+    } catch (e) {
+        console.error("Comick Feed Error", e);
+        return [];
+    }
+};
+
+// 3. UNIFIED STRATEGY
+export const getUnifiedChapters = async (title: string): Promise<MangaDexChapter[]> => {
+   // Strategy:
+   // 1. Try MD (PT-BR)
+   // 2. Try Comick (PT-BR)
+   // 3. Try MD (EN)
+   // 4. Try Comick (EN)
+   
+   // Parallel search for IDs to save time
+   const [mdId, comickId] = await Promise.all([
+       findMangaDexId(title),
+       findComickId(title)
+   ]);
+
+   console.log(`Found IDs for ${title}: MD=${mdId}, Comick=${comickId}`);
+
+   // 1. Try PT-BR on MangaDex
+   if (mdId) {
+       const chapters = await getMangaDexChapters(mdId, 'pt-br');
+       if (chapters.length > 0) return chapters;
+   }
+
+   // 2. Try PT-BR on Comick
+   if (comickId) {
+       const chapters = await getComickChapters(comickId, 'pt-br');
+       if (chapters.length > 0) return chapters;
+   }
+
+   // 3. Try EN on MangaDex
+   if (mdId) {
+       const chapters = await getMangaDexChapters(mdId, 'en');
+       if (chapters.length > 0) return chapters;
+   }
+
+   // 4. Try EN on Comick
+   if (comickId) {
+       const chapters = await getComickChapters(comickId, 'en');
+       if (chapters.length > 0) return chapters;
+   }
+
+   return [];
+};
+
+// 4. Image Fetching
+export const getChapterImages = async (chapterId: string): Promise<string[]> => {
+  // Determine provider by ID format
+  // MangaDex = UUID (8-4-4-4-12 hex)
+  // Comick = Alphanumeric Short ID
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chapterId);
+
+  if (isUUID) {
+      // MangaDex
+      try {
+        const url = `${MANGADEX_BASE}/at-home/server/${chapterId}`;
+        const response = await fetchWithProxy(url);
+        const data = await response.json();
+        
+        if (data.baseUrl && data.chapter && data.chapter.data) {
+            const baseUrl = data.baseUrl;
+            const hash = data.chapter.hash;
+            return data.chapter.data.map((file: string) => `${baseUrl}/data/${hash}/${file}`);
+        }
+      } catch (error) {
+        console.error("MangaDex Image Error", error);
+      }
+  } else {
+      // Comick
+      try {
+          const url = `${COMICK_BASE}/chapter/${chapterId}`;
+          const response = await fetchWithProxy(url);
+          const data = await response.json();
+          
+          if (data.chapter && data.chapter.images) {
+              return data.chapter.images.map((img: any) => img.url);
+          }
+      } catch (e) {
+          console.error("Comick Image Error", e);
+      }
+  }
+
+  return [];
 };
