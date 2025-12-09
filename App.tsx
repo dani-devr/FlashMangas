@@ -3,8 +3,25 @@ import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { getTrendingManga, getTopManga, getManhwa, searchJikan, getMangaById, findMangaDexId, getMangaDexChapters, getChapterImages } from './services/api';
 import { getUser, saveUser, toggleFavorite, addToHistory, addLocalComment, getLocalComments, loginUser, signupUser, googleLogin, logoutUser } from './services/store';
-import { JikanManga, MangaDexChapter, User, Comment } from './types';
+import { JikanManga, MangaDexChapter, User, Comment, SearchFilters } from './types';
 import confetti from 'canvas-confetti';
+
+// --- CONSTANTS ---
+const GENRES = [
+  { id: 1, name: 'Action' },
+  { id: 2, name: 'Adventure' },
+  { id: 4, name: 'Comedy' },
+  { id: 8, name: 'Drama' },
+  { id: 10, name: 'Fantasy' },
+  { id: 14, name: 'Horror' },
+  { id: 7, name: 'Mystery' },
+  { id: 22, name: 'Romance' },
+  { id: 24, name: 'Sci-Fi' },
+  { id: 36, name: 'Slice of Life' },
+  { id: 30, name: 'Sports' },
+  { id: 37, name: 'Supernatural' },
+  { id: 9, name: 'Ecchi (16+)' },
+];
 
 // --- SHARED COMPONENTS ---
 
@@ -18,23 +35,55 @@ const Spinner = () => (
 );
 
 // New Top Header: Logo Left, Search Right
-const TopHeader = ({ onSearch, user }: { onSearch: (q: string) => void, user: User }) => {
+const TopHeader = ({ onSearch, user }: { onSearch: (q: string, filters: SearchFilters) => void, user: User }) => {
   const [q, setQ] = useState('');
   const [scrolled, setScrolled] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Filter States
+  const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
+  const [status, setStatus] = useState<string>('any');
+  const [includeNsfw, setIncludeNsfw] = useState(false);
+  
   const navigate = useNavigate();
+  const filterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setShowFilters(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (q.trim()) {
-      onSearch(q);
+      onSearch(q, {
+        genres: selectedGenres,
+        status: status === 'any' ? undefined : status,
+        nsfw: includeNsfw
+      });
       navigate('/search');
+      setShowFilters(false);
       setQ('');
+    }
+  };
+
+  const toggleGenre = (id: number) => {
+    if (selectedGenres.includes(id)) {
+      setSelectedGenres(selectedGenres.filter(g => g !== id));
+    } else {
+      setSelectedGenres([...selectedGenres, id]);
     }
   };
 
@@ -50,21 +99,116 @@ const TopHeader = ({ onSearch, user }: { onSearch: (q: string) => void, user: Us
           </span>
         </Link>
 
-        {/* Search Input */}
-        <div className="flex items-center gap-4">
-           <form onSubmit={handleSearch} className="relative group">
+        {/* Search Input & Filters */}
+        <div className="flex items-center gap-4 relative">
+           <div className="relative group z-20">
               <div className="absolute inset-0 bg-brand-500/20 rounded-full blur-md opacity-0 group-focus-within:opacity-100 transition-opacity"></div>
-              <input 
-                type="text" 
-                placeholder="Search..." 
-                className="relative z-10 w-32 md:w-64 bg-white/10 border border-white/10 rounded-full py-2 pl-4 pr-10 text-sm focus:outline-none focus:bg-black/90 focus:border-brand-500 transition-all text-white placeholder-gray-400"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-              <button type="submit" className="absolute right-3 top-2.5 text-gray-400 z-20">
-                <i className="fas fa-search text-xs"></i>
-              </button>
-           </form>
+              <div className="relative z-10 flex items-center bg-white/10 border border-white/10 rounded-full overflow-hidden focus-within:bg-black/90 focus-within:border-brand-500 transition-all">
+                <form onSubmit={handleSearch} className="flex-1 flex items-center">
+                  <input 
+                    type="text" 
+                    placeholder="Search..." 
+                    className="w-24 md:w-56 bg-transparent py-2 pl-4 text-sm focus:outline-none text-white placeholder-gray-400"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                  />
+                </form>
+                <button 
+                  type="button"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`px-3 py-2 text-gray-400 hover:text-white transition-colors border-l border-white/10 ${showFilters ? 'text-brand-400' : ''}`}
+                >
+                  <i className="fas fa-sliders-h text-xs"></i>
+                </button>
+                <button onClick={handleSearch} className="px-3 py-2 text-gray-400 hover:text-white transition-colors">
+                  <i className="fas fa-search text-xs"></i>
+                </button>
+              </div>
+           </div>
+
+           {/* Filter Dropdown/Modal */}
+           {showFilters && (
+             <div ref={filterRef} className="absolute top-full right-0 mt-4 w-[90vw] md:w-[400px] bg-[#151515] border border-white/10 rounded-2xl shadow-2xl p-6 animate-fade-in z-50">
+               <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+                 <i className="fas fa-filter text-brand-500 text-sm"></i> Search Filters
+               </h3>
+               
+               {/* Genres */}
+               <div className="mb-6">
+                 <label className="text-xs font-bold text-gray-500 uppercase block mb-3">Genres</label>
+                 <div className="flex flex-wrap gap-2">
+                   {GENRES.map(genre => (
+                     <button
+                       key={genre.id}
+                       onClick={() => toggleGenre(genre.id)}
+                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                         selectedGenres.includes(genre.id) 
+                           ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20' 
+                           : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                       }`}
+                     >
+                       {genre.name}
+                     </button>
+                   ))}
+                 </div>
+               </div>
+
+               {/* Status */}
+               <div className="mb-6">
+                 <label className="text-xs font-bold text-gray-500 uppercase block mb-3">Status</label>
+                 <div className="flex bg-white/5 rounded-lg p-1">
+                   {['any', 'publishing', 'complete'].map((s) => (
+                     <button
+                       key={s}
+                       onClick={() => setStatus(s)}
+                       className={`flex-1 py-2 text-xs font-bold rounded-md capitalize transition-all ${
+                         status === s ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                       }`}
+                     >
+                       {s === 'complete' ? 'Finished' : s}
+                     </button>
+                   ))}
+                 </div>
+               </div>
+
+               {/* NSFW Toggle (Conditional) */}
+               {user.nsfwEnabled && (
+                 <div className="flex items-center justify-between mb-6 bg-red-500/10 p-3 rounded-xl border border-red-500/20">
+                   <div>
+                     <span className="text-xs font-bold text-red-400 flex items-center gap-2">
+                       <i className="fas fa-exclamation-circle"></i> Include 18+ Content
+                     </span>
+                   </div>
+                   <button 
+                      onClick={() => setIncludeNsfw(!includeNsfw)}
+                      className={`w-10 h-5 rounded-full p-0.5 transition-all ${includeNsfw ? 'bg-red-500' : 'bg-gray-700'}`}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${includeNsfw ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                    </button>
+                 </div>
+               )}
+
+               {/* Actions */}
+               <div className="flex justify-end gap-3 pt-2 border-t border-white/10">
+                 <button 
+                    onClick={() => {
+                      setSelectedGenres([]);
+                      setStatus('any');
+                      setIncludeNsfw(false);
+                    }}
+                    className="text-xs text-gray-500 hover:text-white px-3 py-2"
+                 >
+                   Reset
+                 </button>
+                 <button 
+                    onClick={handleSearch}
+                    className="bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-6 py-2 rounded-lg transition-all"
+                 >
+                   Apply & Search
+                 </button>
+               </div>
+             </div>
+           )}
            
            <Link to="/profile" className="hidden md:block">
               <img src={user.avatar} className="w-9 h-9 rounded-full border border-white/20 bg-white/5 object-cover" alt="Profile" />
@@ -979,13 +1123,13 @@ export default function App() {
     return () => window.removeEventListener('user-update', handleUserUpdate);
   }, []);
 
-  const executeSearch = async (query: string) => {
+  // Update executeSearch to accept filters
+  const executeSearch = async (query: string, filters: SearchFilters) => {
     setLoadingSearch(true);
     try {
-      // Pass the user's NSFW preference to the search function
-      // We grab the latest user state directly to ensure it's fresh
-      const currentUser = getUser();
-      const res = await searchJikan(query, currentUser.nsfwEnabled);
+      // filters.nsfw comes from the search UI toggle
+      // user.nsfwEnabled acts as a hard gate in the UI before they can even click it
+      const res = await searchJikan(query, filters);
       setSearchResults(res);
     } catch (e) { console.error(e); } 
     finally { setLoadingSearch(false); }
