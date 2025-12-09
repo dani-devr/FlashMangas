@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { getTrendingManga, getTopManga, getManhwa, searchJikan, getMangaById, findMangaDexId, getMangaDexChapters, getChapterImages } from './services/api';
-import { getUser, saveUser, toggleFavorite, addToHistory, addLocalComment, getLocalComments, loginUser, signupUser, googleLogin, logoutUser } from './services/store';
+import { getUser, saveUser, toggleFavorite, addToHistory, addLocalComment, getLocalComments, loginUser, signupUser, googleLogin, logoutUser, resetAppData } from './services/store';
 import { JikanManga, MangaDexChapter, User, Comment, SearchFilters } from './types';
 import confetti from 'canvas-confetti';
 
@@ -172,7 +172,7 @@ const TopHeader = ({ onSearch, user }: { onSearch: (q: string, filters: SearchFi
                </div>
 
                {/* NSFW Toggle (Conditional) */}
-               {user.nsfwEnabled && (
+               {user.nsfwEnabled ? (
                  <div className="flex items-center justify-between mb-6 bg-red-500/10 p-3 rounded-xl border border-red-500/20">
                    <div>
                      <span className="text-xs font-bold text-red-400 flex items-center gap-2">
@@ -186,6 +186,13 @@ const TopHeader = ({ onSearch, user }: { onSearch: (q: string, filters: SearchFi
                       <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${includeNsfw ? 'translate-x-5' : 'translate-x-0'}`}></div>
                     </button>
                  </div>
+               ) : (
+                  <div className="mb-6 p-3 rounded-xl border border-white/10 bg-white/5 flex items-center justify-between opacity-50 cursor-not-allowed">
+                     <span className="text-xs font-bold text-gray-400 flex items-center gap-2">
+                       <i className="fas fa-lock"></i> NSFW (Premium Only)
+                     </span>
+                     <div className="w-10 h-5 bg-gray-700 rounded-full p-0.5"><div className="w-4 h-4 bg-gray-500 rounded-full"></div></div>
+                  </div>
                )}
 
                {/* Actions */}
@@ -301,6 +308,92 @@ const HorizontalList = ({ title, items }: { title: string, items: JikanManga[] }
 );
 
 // --- AUTH & PROFILE COMPONENTS ---
+
+const PaymentModal = ({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }) => {
+  const [processing, setProcessing] = useState(false);
+  const [step, setStep] = useState(1);
+
+  const handlePay = (e: React.FormEvent) => {
+    e.preventDefault();
+    setProcessing(true);
+    // Simulate payment
+    setTimeout(() => {
+      setProcessing(false);
+      setStep(2);
+      setTimeout(() => {
+        onSuccess();
+      }, 1500);
+    }, 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
+       <div className="bg-[#151515] w-full max-w-md rounded-2xl border border-white/10 shadow-2xl relative overflow-hidden">
+          {/* Decorative Glow */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+          <div className="p-6 relative z-10">
+             <div className="flex justify-between items-start mb-6">
+                <div>
+                   <h3 className="text-xl font-black text-white">Upgrade to Premium</h3>
+                   <p className="text-brand-400 font-bold">$5.00 <span className="text-gray-500 font-normal text-sm">/ month</span></p>
+                </div>
+                <button onClick={onClose} className="text-gray-500 hover:text-white"><i className="fas fa-times"></i></button>
+             </div>
+
+             {step === 1 ? (
+                <form onSubmit={handlePay} className="space-y-4">
+                  <div className="bg-white/5 rounded-xl p-4 border border-white/5 mb-4">
+                     <ul className="space-y-2 text-sm text-gray-300">
+                        <li className="flex items-center gap-2"><i className="fas fa-check text-green-400"></i> Ad-free Experience</li>
+                        <li className="flex items-center gap-2"><i className="fas fa-check text-green-400"></i> Unlock NSFW Content</li>
+                        <li className="flex items-center gap-2"><i className="fas fa-check text-green-400"></i> High Quality Downloads</li>
+                        <li className="flex items-center gap-2"><i className="fas fa-check text-green-400"></i> Support Development</li>
+                     </ul>
+                  </div>
+
+                  <div>
+                     <label className="text-xs font-bold text-gray-500 uppercase ml-1">Card Number</label>
+                     <div className="relative">
+                        <i className="fas fa-credit-card absolute left-3 top-3.5 text-gray-500"></i>
+                        <input type="text" placeholder="0000 0000 0000 0000" className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:border-brand-500 focus:outline-none" required />
+                     </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                     <div className="flex-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Expiry</label>
+                        <input type="text" placeholder="MM/YY" className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-white focus:border-brand-500 focus:outline-none" required />
+                     </div>
+                     <div className="flex-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase ml-1">CVC</label>
+                        <input type="text" placeholder="123" className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-white focus:border-brand-500 focus:outline-none" required />
+                     </div>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    disabled={processing}
+                    className="w-full bg-brand-600 hover:bg-brand-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-brand-500/20 transition-all active:scale-95 flex justify-center items-center mt-4"
+                  >
+                     {processing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : 'Confirm Payment'}
+                  </button>
+                  <p className="text-[10px] text-center text-gray-600">Secured by FlashPay™</p>
+                </form>
+             ) : (
+                <div className="py-8 text-center">
+                   <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-slide-up shadow-[0_0_20px_rgba(34,197,94,0.5)]">
+                      <i className="fas fa-check text-2xl text-white"></i>
+                   </div>
+                   <h3 className="text-xl font-bold text-white mb-2">Payment Successful!</h3>
+                   <p className="text-gray-400 text-sm">Welcome to FlashMangas Premium.</p>
+                </div>
+             )}
+          </div>
+       </div>
+    </div>
+  );
+};
 
 const AuthModal = ({ onClose }: { onClose?: () => void }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -945,6 +1038,7 @@ const Reader = () => {
 const ProfilePage = () => {
   const [user, setUser] = useState(getUser());
   const [isEditing, setIsEditing] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -961,9 +1055,10 @@ const ProfilePage = () => {
      )
   }
 
-  const goPremium = () => {
+  const handlePremiumSuccess = () => {
       const updated = { ...user, isPremium: true };
       saveUser(updated);
+      setShowPayment(false);
       confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
   };
 
@@ -971,6 +1066,11 @@ const ProfilePage = () => {
       const updated = { ...user, nsfwEnabled: !user.nsfwEnabled };
       saveUser(updated);
   };
+  
+  const toggleSetting = (key: 'dataSaver' | 'notifications') => {
+      const updated = { ...user, [key]: !user[key] };
+      saveUser(updated);
+  }
   
   const handleLogout = () => {
     logoutUser();
@@ -1010,7 +1110,7 @@ const ProfilePage = () => {
                      <i className="fas fa-pen"></i> Edit Profile
                    </button>
                    {!user.isPremium && (
-                     <button onClick={goPremium} className="px-6 py-2 rounded-full bg-gradient-to-r from-brand-600 to-purple-600 hover:scale-105 text-white font-bold text-sm transition-all shadow-lg shadow-brand-500/20">
+                     <button onClick={() => setShowPayment(true)} className="px-6 py-2 rounded-full bg-gradient-to-r from-brand-600 to-purple-600 hover:scale-105 text-white font-bold text-sm transition-all shadow-lg shadow-brand-500/20">
                        <i className="fas fa-crown"></i> Go Premium
                      </button>
                    )}
@@ -1024,6 +1124,8 @@ const ProfilePage = () => {
 
        {/* Edit Modal */}
        {isEditing && <EditProfileModal user={user} onClose={() => setIsEditing(false)} />}
+       {/* Payment Modal */}
+       {showPayment && <PaymentModal onClose={() => setShowPayment(false)} onSuccess={handlePremiumSuccess} />}
 
        {/* Stats Grid */}
        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -1038,25 +1140,76 @@ const ProfilePage = () => {
        </div>
 
         {/* Settings Section */}
-       <div className="bg-[#111] border border-white/5 rounded-3xl p-6 mb-8">
+       <div className="bg-[#111] border border-white/5 rounded-3xl p-6 mb-8 space-y-4">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
                <i className="fas fa-cog text-brand-500"></i> Settings
           </h2>
           
+          {/* NSFW Settings (Premium Only) */}
+          <div className={`bg-white/5 rounded-xl p-4 flex items-center justify-between ${!user.isPremium ? 'opacity-80' : ''}`}>
+              <div className="flex-1">
+                  <h3 className="font-bold text-white flex items-center gap-2">
+                     <i className="fas fa-exclamation-triangle text-red-500"></i> NSFW Content
+                     {!user.isPremium && <span className="bg-brand-600 text-white text-[9px] px-1.5 py-0.5 rounded ml-2">PREMIUM</span>}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">Show 18+ content in search results.</p>
+              </div>
+              
+              <div className="relative">
+                  {/* Lock overlay for free users */}
+                  {!user.isPremium && (
+                      <div className="absolute inset-0 z-10 cursor-pointer" onClick={() => setShowPayment(true)}></div>
+                  )}
+                  <button 
+                    onClick={user.isPremium ? toggleNsfw : undefined}
+                    className={`w-14 h-7 rounded-full p-1 transition-all duration-300 ${user.nsfwEnabled ? 'bg-red-500' : 'bg-gray-700'}`}
+                  >
+                      <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 ${user.nsfwEnabled ? 'translate-x-7' : 'translate-x-0'}`}></div>
+                  </button>
+              </div>
+          </div>
+
+          {/* Data Saver */}
           <div className="bg-white/5 rounded-xl p-4 flex items-center justify-between">
               <div>
                   <h3 className="font-bold text-white flex items-center gap-2">
-                     <i className="fas fa-exclamation-triangle text-red-500"></i> NSFW Content
+                     <i className="fas fa-wifi text-blue-400"></i> Data Saver
                   </h3>
-                  <p className="text-xs text-gray-500 mt-1">Show 18+ content in search results. Enable at your own discretion.</p>
+                  <p className="text-xs text-gray-500 mt-1">Load lower quality images to save bandwidth.</p>
               </div>
               <button 
-                onClick={toggleNsfw}
-                className={`w-14 h-7 rounded-full p-1 transition-all duration-300 ${user.nsfwEnabled ? 'bg-red-500' : 'bg-gray-700'}`}
+                onClick={() => toggleSetting('dataSaver')}
+                className={`w-14 h-7 rounded-full p-1 transition-all duration-300 ${user.dataSaver ? 'bg-brand-600' : 'bg-gray-700'}`}
               >
-                  <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 ${user.nsfwEnabled ? 'translate-x-7' : 'translate-x-0'}`}></div>
+                  <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 ${user.dataSaver ? 'translate-x-7' : 'translate-x-0'}`}></div>
               </button>
           </div>
+
+          {/* Notifications */}
+          <div className="bg-white/5 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                  <h3 className="font-bold text-white flex items-center gap-2">
+                     <i className="fas fa-bell text-yellow-400"></i> Notifications
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">Get updates on new chapters for favorites.</p>
+              </div>
+              <button 
+                onClick={() => toggleSetting('notifications')}
+                className={`w-14 h-7 rounded-full p-1 transition-all duration-300 ${user.notifications ? 'bg-brand-600' : 'bg-gray-700'}`}
+              >
+                  <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 ${user.notifications ? 'translate-x-7' : 'translate-x-0'}`}></div>
+              </button>
+          </div>
+          
+           {/* Danger Zone */}
+           <div className="pt-4 mt-4 border-t border-white/5">
+              <button 
+                onClick={() => { if(confirm('Are you sure you want to reset all app data? This cannot be undone.')) resetAppData(); }}
+                className="w-full py-3 rounded-xl border border-red-500/30 text-red-500 hover:bg-red-500/10 font-bold text-sm transition-all flex items-center justify-center gap-2"
+              >
+                <i className="fas fa-trash-alt"></i> Reset App Data
+              </button>
+           </div>
        </div>
 
        <div className="space-y-8">
