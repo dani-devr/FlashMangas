@@ -12,6 +12,8 @@ const defaultUser: User = {
   isPremium: false,
   avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Guest',
   nsfwEnabled: false,
+  dataSaver: false,
+  notifications: true,
   favorites: [],
   history: []
 };
@@ -29,6 +31,11 @@ export const getUser = (): User => {
 export const saveUser = (user: User) => {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
   window.dispatchEvent(new Event('user-update'));
+};
+
+export const resetAppData = () => {
+  localStorage.clear();
+  window.location.reload();
 };
 
 // --- AUTH SIMULATION ---
