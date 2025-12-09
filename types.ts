@@ -28,6 +28,7 @@ export interface MangaDexManga {
 
 export interface MangaDexChapter {
   id: string;
+  provider: 'mangadex' | 'comick';
   attributes: {
     volume: string | null;
     chapter: string;
@@ -37,7 +38,7 @@ export interface MangaDexChapter {
     externalUrl?: string | null;
     translatedLanguage?: string;
   };
-  relationships: {
+  relationships?: {
     id: string;
     type: string;
   }[];
