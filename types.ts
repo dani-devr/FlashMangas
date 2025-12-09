@@ -1,3 +1,4 @@
+
 export interface JikanManga {
   mal_id: number;
   title: string;
@@ -33,6 +34,8 @@ export interface MangaDexChapter {
     title: string | null;
     publishAt: string;
     pages: number;
+    externalUrl?: string | null;
+    translatedLanguage?: string;
   };
   relationships: {
     id: string;
