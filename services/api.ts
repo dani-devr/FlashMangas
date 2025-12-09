@@ -43,7 +43,9 @@ const JIKAN_BASE = 'https://api.jikan.moe/v4';
 let jikanQueue = Promise.resolve();
 
 // Helper to check if manga is safe
-const isSafeContent = (manga: any): boolean => {
+const isSafeContent = (manga: any, allowNsfw: boolean = false): boolean => {
+  if (allowNsfw) return true; // Bypass checks if NSFW is allowed
+
   // Check rating
   if (manga.rating && (manga.rating.includes('Rx') || manga.rating.includes('Hentai'))) return false;
   
@@ -56,7 +58,7 @@ const isSafeContent = (manga: any): boolean => {
   return true;
 };
 
-async function fetchJikan(endpoint: string): Promise<any> {
+async function fetchJikan(endpoint: string, allowNsfw: boolean = false): Promise<any> {
   // Return a promise that resolves when it's this request's turn in the queue
   return new Promise((resolve, reject) => {
     jikanQueue = jikanQueue.then(async () => {
@@ -73,8 +75,8 @@ async function fetchJikan(endpoint: string): Promise<any> {
            if (!retryResponse.ok) throw new Error(`Jikan API Error: ${retryResponse.status}`);
            const data = await retryResponse.json();
            const safeData = Array.isArray(data.data) 
-             ? data.data.filter(isSafeContent) 
-             : (isSafeContent(data.data) ? data.data : null);
+             ? data.data.filter((item: any) => isSafeContent(item, allowNsfw)) 
+             : (isSafeContent(data.data, allowNsfw) ? data.data : null);
            resolve(safeData);
            return;
         }
@@ -84,8 +86,8 @@ async function fetchJikan(endpoint: string): Promise<any> {
         
         // Client-side filtering for safety
         const safeData = Array.isArray(data.data) 
-             ? data.data.filter(isSafeContent) 
-             : (isSafeContent(data.data) ? data.data : null);
+             ? data.data.filter((item: any) => isSafeContent(item, allowNsfw)) 
+             : (isSafeContent(data.data, allowNsfw) ? data.data : null);
 
         resolve(safeData);
       } catch (e) {
@@ -99,7 +101,6 @@ async function fetchJikan(endpoint: string): Promise<any> {
 }
 
 export const getTrendingManga = async (): Promise<JikanManga[]> => {
-  // Top endpoint might not strictly support sfw param but we add it just in case, plus client filter handles it
   return fetchJikan('/top/manga?filter=publishing&limit=25&sfw=true');
 };
 
@@ -111,14 +112,19 @@ export const getManhwa = async (): Promise<JikanManga[]> => {
   return fetchJikan('/manga?type=manhwa&order_by=popularity&sort=desc&limit=25&sfw=true');
 };
 
-export const searchJikan = async (query: string): Promise<JikanManga[]> => {
-  // Removed order_by=popularity to allow Relevance sorting (fixes "Record of Ragnarok" not showing up)
-  // Added genres_exclude to strictly block Hentai(12) and Erotica(49)
-  return fetchJikan(`/manga?q=${query}&limit=25&sfw=true&genres_exclude=12,49`);
+export const searchJikan = async (query: string, allowNsfw: boolean = false): Promise<JikanManga[]> => {
+  // If NSFW is allowed, remove sfw=true and the genre exclusions
+  let url = `/manga?q=${query}&limit=25`;
+  
+  if (!allowNsfw) {
+    url += '&sfw=true&genres_exclude=12,49';
+  }
+  
+  return fetchJikan(url, allowNsfw);
 };
 
 export const getMangaById = async (id: number): Promise<JikanManga> => {
-  return fetchJikan(`/manga/${id}`);
+  return fetchJikan(`/manga/${id}`, true); // Always allow details view if link is known
 };
 
 
@@ -128,7 +134,7 @@ const MANGADEX_BASE = 'https://api.mangadex.org';
 
 export const findMangaDexId = async (title: string): Promise<string | null> => {
   try {
-    const url = `${MANGADEX_BASE}/manga?title=${encodeURIComponent(title)}&order[followedCount]=desc&limit=1&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`; // Explicitly excluding 'pornographic'
+    const url = `${MANGADEX_BASE}/manga?title=${encodeURIComponent(title)}&order[followedCount]=desc&limit=1&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic`; 
     const response = await fetchWithProxy(url);
     const data = await response.json();
     return data.data && data.data.length > 0 ? data.data[0].id : null;
@@ -167,7 +173,7 @@ export const getMangaDexChapters = async (mangaDexId: string, limit = 500, offse
   try {
     const fetchLang = async (lang: string) => {
         // limit 500 is the max for feed often allowed
-        const url = `${MANGADEX_BASE}/manga/${mangaDexId}/feed?translatedLanguage[]=${lang}&order[chapter]=desc&limit=${limit}&offset=${offset}&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&includeFutureUpdates=0`;
+        const url = `${MANGADEX_BASE}/manga/${mangaDexId}/feed?translatedLanguage[]=${lang}&order[chapter]=desc&limit=${limit}&offset=${offset}&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeFutureUpdates=0`;
         const response = await fetchWithProxy(url);
         return await response.json();
     };
