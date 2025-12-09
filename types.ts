@@ -52,6 +52,7 @@ export interface User {
   provider?: 'google' | 'email';
   isPremium: boolean;
   avatar: string;
+  nsfwEnabled: boolean; // New field for NSFW toggle
   favorites: number[]; // stored by mal_id
   history: {
     mal_id: number;
