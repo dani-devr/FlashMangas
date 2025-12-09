@@ -45,15 +45,15 @@ export interface MangaDexChapter {
 
 export interface User {
   username: string;
-  description: string; // New field for profile bio
-  email?: string; // New field for auth
-  isLoggedIn: boolean; // New field for auth state
+  description: string;
+  email?: string;
+  isLoggedIn: boolean;
   joinedAt?: string;
   provider?: 'google' | 'email';
   isPremium: boolean;
   avatar: string;
-  nsfwEnabled: boolean; // New field for NSFW toggle
-  favorites: number[]; // stored by mal_id
+  nsfwEnabled: boolean;
+  favorites: number[];
   history: {
     mal_id: number;
     chapterId: string;
@@ -70,4 +70,10 @@ export interface Comment {
   text: string;
   timestamp: string;
   likes: number;
+}
+
+export interface SearchFilters {
+  genres: number[];
+  status?: string;
+  nsfw: boolean;
 }
