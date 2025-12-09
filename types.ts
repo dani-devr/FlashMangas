@@ -45,6 +45,11 @@ export interface MangaDexChapter {
 
 export interface User {
   username: string;
+  description: string; // New field for profile bio
+  email?: string; // New field for auth
+  isLoggedIn: boolean; // New field for auth state
+  joinedAt?: string;
+  provider?: 'google' | 'email';
   isPremium: boolean;
   avatar: string;
   favorites: number[]; // stored by mal_id
