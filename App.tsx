@@ -283,6 +283,7 @@ const EditProfileModal = ({ user, onClose }: { user: User, onClose: () => void }
   const [desc, setDesc] = useState(user.description);
   const [avatar, setAvatar] = useState(user.avatar);
   const [customAvatar, setCustomAvatar] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const seeds = ['Felix', 'Aneka', 'Zack', 'Molly', 'Caleb', 'Tinker'];
   
@@ -291,6 +292,19 @@ const EditProfileModal = ({ user, onClose }: { user: User, onClose: () => void }
     saveUser(updated);
     onClose();
     confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        setCustomAvatar(result);
+        setAvatar(result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   return (
@@ -305,6 +319,32 @@ const EditProfileModal = ({ user, onClose }: { user: User, onClose: () => void }
              {/* Avatar Section */}
              <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-3">Choose Avatar</label>
+                
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                    <img src={avatar} className="w-20 h-20 rounded-full border-2 border-brand-500 object-cover" alt="Preview" />
+                    <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <i className="fas fa-camera text-white"></i>
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                     <button 
+                       onClick={() => fileInputRef.current?.click()}
+                       className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm text-white font-bold transition-all w-full mb-2"
+                     >
+                       <i className="fas fa-upload mr-2"></i> Upload Image
+                     </button>
+                     <input 
+                       ref={fileInputRef}
+                       type="file" 
+                       accept="image/*"
+                       className="hidden"
+                       onChange={handleFileUpload}
+                     />
+                     <p className="text-[10px] text-gray-500">Supported: JPG, PNG, GIF. Max 5MB.</p>
+                  </div>
+                </div>
+
                 <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
                    {seeds.map(seed => {
                       const url = `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}`;
@@ -312,7 +352,7 @@ const EditProfileModal = ({ user, onClose }: { user: User, onClose: () => void }
                         <button 
                           key={seed} 
                           onClick={() => { setAvatar(url); setCustomAvatar(''); }}
-                          className={`min-w-[60px] h-[60px] rounded-full border-2 p-1 transition-all ${avatar === url ? 'border-brand-500 bg-brand-500/20' : 'border-transparent hover:bg-white/5'}`}
+                          className={`min-w-[60px] h-[60px] rounded-full border-2 p-1 transition-all flex-shrink-0 ${avatar === url ? 'border-brand-500 bg-brand-500/20' : 'border-transparent hover:bg-white/5'}`}
                         >
                            <img src={url} className="w-full h-full rounded-full" />
                         </button>
@@ -625,6 +665,8 @@ const Reader = () => {
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHeader, setShowHeader] = useState(true);
+  const [navData, setNavData] = useState<{next?: MangaDexChapter, prev?: MangaDexChapter} | null>(null);
+  
   const lastScrollY = useRef(0);
   
   useEffect(() => {
@@ -633,9 +675,36 @@ const Reader = () => {
       setLoading(true);
       const imgs = await getChapterImages(chapterId);
       setImages(imgs);
+      
+      // History logic
       if (malId && title && chapterNum) {
         addToHistory(Number(malId), chapterId, title, chapterNum);
       }
+      
+      // Fetch nearby chapters for navigation
+      // Note: This repeats a fetch but ensures reader is self-contained. 
+      // Ideally we'd store chapter list in Context/Store but for simplicity we fetch again.
+      if (title) {
+         try {
+             const mdId = await findMangaDexId(title);
+             if (mdId) {
+                const { chapters } = await getMangaDexChapters(mdId, 500, 0); // Re-fetch to find next/prev
+                const currentIndex = chapters.findIndex(c => c.id === chapterId);
+                
+                if (currentIndex >= 0) {
+                    // Chapters are usually sorted DESCENDING by chapter number (Latest First)
+                    // So "Next Chapter" (chronologically next) is at currentIndex - 1
+                    // "Prev Chapter" (chronologically previous) is at currentIndex + 1
+                    
+                    const nextChap = currentIndex > 0 ? chapters[currentIndex - 1] : undefined;
+                    const prevChap = currentIndex < chapters.length - 1 ? chapters[currentIndex + 1] : undefined;
+                    
+                    setNavData({ next: nextChap, prev: prevChap });
+                }
+             }
+         } catch(e) { console.error("Nav fetch failed", e); }
+      }
+      
       setLoading(false);
     };
     loadImages();
@@ -678,8 +747,42 @@ const Reader = () => {
                 {images.map((img, idx) => (
                   <img key={idx} src={img} className="w-full h-auto" loading="lazy" alt={`Page ${idx + 1}`} />
                 ))}
-                <div className="py-20 flex justify-center gap-6">
-                  <button className="px-8 py-3 rounded-full bg-white/10 text-white font-bold" onClick={() => window.history.back()}>Close</button>
+                
+                {/* Navigation Buttons */}
+                <div className="py-20 px-6">
+                    <div className="flex justify-between gap-4 mb-8">
+                        {navData?.prev ? (
+                             <Link 
+                               to={`/read/${malId}/${navData.prev.id}/${encodeURIComponent(title || '')}/${navData.prev.attributes.chapter}`}
+                               className="flex-1 bg-white/10 hover:bg-white/20 text-white p-4 rounded-xl text-center transition-all border border-white/5"
+                             >
+                                <div className="text-xs text-gray-400 uppercase font-bold mb-1">Previous</div>
+                                <div className="font-bold">Chapter {navData.prev.attributes.chapter}</div>
+                             </Link>
+                        ) : (
+                            <div className="flex-1 opacity-0"></div>
+                        )}
+                        
+                        {navData?.next ? (
+                             <Link 
+                               to={`/read/${malId}/${navData.next.id}/${encodeURIComponent(title || '')}/${navData.next.attributes.chapter}`}
+                               className="flex-1 bg-brand-600 hover:bg-brand-500 text-white p-4 rounded-xl text-center transition-all shadow-lg shadow-brand-500/20"
+                             >
+                                <div className="text-xs text-brand-200 uppercase font-bold mb-1">Next</div>
+                                <div className="font-bold">Chapter {navData.next.attributes.chapter}</div>
+                             </Link>
+                        ) : (
+                            <div className="flex-1 opacity-50 bg-white/5 p-4 rounded-xl text-center">
+                                <span className="text-gray-500 text-sm">No next chapter</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex justify-center">
+                        <button className="px-8 py-3 rounded-full bg-white/5 hover:bg-white/10 text-white font-bold border border-white/10 transition-colors" onClick={() => window.history.back()}>
+                            Close Reader
+                        </button>
+                    </div>
                 </div>
                 </>
             ) : (
