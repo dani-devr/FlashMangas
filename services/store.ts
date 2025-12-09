@@ -11,6 +11,7 @@ const defaultUser: User = {
   isLoggedIn: false,
   isPremium: false,
   avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Guest',
+  nsfwEnabled: false,
   favorites: [],
   history: []
 };
