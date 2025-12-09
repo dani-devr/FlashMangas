@@ -1,3 +1,4 @@
+
 import { JikanManga, MangaDexManga, MangaDexChapter } from '../types';
 
 // --- CORS PROXY ROTATION ---
@@ -137,15 +138,57 @@ export const findMangaDexId = async (title: string): Promise<string | null> => {
   }
 };
 
-// Increased default limit to 500 to show "ALL" chapters effectively for most series
+// Process chapters: Filter external, deduplicate, and sort
+const processChapters = (rawChapters: any[]): MangaDexChapter[] => {
+  // 1. Filter out external links (pages = 0 or externalUrl exists) or null chapters
+  const valid = rawChapters.filter(ch => {
+      const attr = ch.attributes;
+      return (attr.pages > 0) && !attr.externalUrl && attr.chapter; 
+  });
+
+  // 2. Deduplicate by chapter number
+  // Using a map to keep the first occurrence (since we sort by desc, this usually keeps the latest upload)
+  const seen = new Set();
+  const unique: MangaDexChapter[] = [];
+  
+  for (const ch of valid) {
+      const num = ch.attributes.chapter;
+      if (!seen.has(num)) {
+          seen.add(num);
+          unique.push(ch);
+      }
+  }
+  
+  // 3. Sort numerically descending
+  return unique.sort((a, b) => parseFloat(b.attributes.chapter) - parseFloat(a.attributes.chapter));
+};
+
 export const getMangaDexChapters = async (mangaDexId: string, limit = 500, offset = 0): Promise<{ chapters: MangaDexChapter[], total: number }> => {
   try {
-    const url = `${MANGADEX_BASE}/manga/${mangaDexId}/feed?translatedLanguage[]=pt-br&order[chapter]=desc&limit=${limit}&offset=${offset}`;
-    const response = await fetchWithProxy(url);
-    const data = await response.json();
+    const fetchLang = async (lang: string) => {
+        // limit 500 is the max for feed often allowed
+        const url = `${MANGADEX_BASE}/manga/${mangaDexId}/feed?translatedLanguage[]=${lang}&order[chapter]=desc&limit=${limit}&offset=${offset}&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&includeFutureUpdates=0`;
+        const response = await fetchWithProxy(url);
+        return await response.json();
+    };
+
+    // Try PT-BR first
+    let data = await fetchLang('pt-br');
+    
+    // Fallback to EN if empty (and if it's the first page/load)
+    if ((!data.data || data.data.length === 0) && offset === 0) {
+        data = await fetchLang('en');
+    }
+
+    const raw = data.data || [];
+    const uniqueChapters = processChapters(raw);
+
     return {
-      chapters: data.data || [],
-      total: data.total || 0
+      chapters: uniqueChapters,
+      // We return the count of unique valid chapters. 
+      // Note: This effectively disables "server-side" pagination logic in the UI for simplicity, 
+      // but ensures the user sees a clean list of up to 500 unique chapters.
+      total: uniqueChapters.length 
     };
   } catch (error) {
     console.error("MangaDex Feed Error", error);
