@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { getTrendingManga, getTopManga, getManhwa, searchJikan, getMangaById, getUnifiedChapters, getChapterImages } from './services/api';
+import { getTrendingManga, getTopManga, getManhwa, searchJikan, getMangaById, getChapters, getChapterImages } from './services/api';
 import { getUser, saveUser, toggleFavorite, addToHistory, addLocalComment, getLocalComments, loginUser, signupUser, googleLogin, logoutUser, resetAppData } from './services/store';
-import { JikanManga, MangaDexChapter, User, Comment, SearchFilters } from './types';
+import { JikanManga, Chapter, User, Comment, SearchFilters } from './types';
 import confetti from 'canvas-confetti';
 
 // --- CONSTANTS ---
@@ -729,7 +729,7 @@ const SearchPage = ({ results, loading }: { results: JikanManga[], loading: bool
 const MangaDetails = () => {
   const { id } = useParams();
   const [manga, setManga] = useState<JikanManga | null>(null);
-  const [chapters, setChapters] = useState<MangaDexChapter[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [comments, setComments] = useState<Comment[]>([]);
@@ -748,8 +748,8 @@ const MangaDetails = () => {
         setIsFav(user.favorites.includes(data.mal_id));
         setComments(getLocalComments(data.mal_id));
         
-        // Unified Fetch (MangaDex + Comick)
-        const chaps = await getUnifiedChapters(data.title);
+        // Single Source Fetch (Comick Only)
+        const chaps = await getChapters(data.title);
         setChapters(chaps);
 
       } catch (err) {
@@ -838,25 +838,20 @@ const MangaDetails = () => {
                   <div className="grid grid-cols-1 gap-2">
                     {chapters.map((chap) => (
                       <Link 
-                        key={`${chap.provider}-${chap.id}`}
-                        to={`/read/${manga.mal_id}/${chap.id}/${encodeURIComponent(manga.title)}/${chap.attributes.chapter}`}
+                        key={chap.id}
+                        to={`/read/${manga.mal_id}/${chap.id}/${encodeURIComponent(manga.title)}/${chap.chapter}`}
                         className="flex justify-between items-center p-3 rounded-lg hover:bg-white/5 transition-colors group"
                       >
                         <div className="flex items-center gap-3">
-                           <span className="text-gray-500 text-sm group-hover:text-brand-400 w-16">#{chap.attributes.chapter}</span>
-                           <span className="text-gray-300 text-sm truncate max-w-[200px] md:max-w-xs">{chap.attributes.title || `Chapter ${chap.attributes.chapter}`}</span>
+                           <span className="text-gray-500 text-sm group-hover:text-brand-400 w-16">#{chap.chapter}</span>
+                           <span className="text-gray-300 text-sm truncate max-w-[200px] md:max-w-xs">{chap.title || `Chapter ${chap.chapter}`}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                           {/* Provider Badge */}
-                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ${chap.provider === 'mangadex' ? 'bg-[#ff6740]/20 text-[#ff6740]' : 'bg-blue-500/20 text-blue-400'}`}>
-                              {chap.provider === 'mangadex' ? 'MD' : 'CK'}
+                           {/* Lang Badge */}
+                           <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${chap.lang === 'pt-br' ? 'bg-green-900/50 text-green-400' : 'bg-blue-900/50 text-blue-400'}`}>
+                              {chap.lang}
                            </span>
-
-                           {chap.attributes.translatedLanguage && (
-                             <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${chap.attributes.translatedLanguage === 'pt-br' ? 'bg-green-900/50 text-green-400' : 'bg-blue-900/50 text-blue-400'}`}>
-                                {chap.attributes.translatedLanguage}
-                             </span>
-                           )}
+                           
                            <i className="fas fa-chevron-right text-xs text-gray-600 group-hover:text-white"></i>
                         </div>
                       </Link>
@@ -903,7 +898,7 @@ const Reader = () => {
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHeader, setShowHeader] = useState(true);
-  const [navData, setNavData] = useState<{next?: MangaDexChapter, prev?: MangaDexChapter} | null>(null);
+  const [navData, setNavData] = useState<{next?: Chapter, prev?: Chapter} | null>(null);
   
   const lastScrollY = useRef(0);
   
@@ -923,7 +918,7 @@ const Reader = () => {
       if (title) {
          try {
              // We use Unified Fetch here to be consistent with details page
-             const chapters = await getUnifiedChapters(title);
+             const chapters = await getChapters(title);
              const currentIndex = chapters.findIndex(c => c.id === chapterId);
                 
              if (currentIndex >= 0) {
@@ -983,11 +978,11 @@ const Reader = () => {
                     <div className="flex justify-between gap-4 mb-8">
                         {navData?.prev ? (
                              <Link 
-                               to={`/read/${malId}/${navData.prev.id}/${encodeURIComponent(title || '')}/${navData.prev.attributes.chapter}`}
+                               to={`/read/${malId}/${navData.prev.id}/${encodeURIComponent(title || '')}/${navData.prev.chapter}`}
                                className="flex-1 bg-white/10 hover:bg-white/20 text-white p-4 rounded-xl text-center transition-all border border-white/5"
                              >
                                 <div className="text-xs text-gray-400 uppercase font-bold mb-1">Previous</div>
-                                <div className="font-bold">Chapter {navData.prev.attributes.chapter}</div>
+                                <div className="font-bold">Chapter {navData.prev.chapter}</div>
                              </Link>
                         ) : (
                             <div className="flex-1 opacity-0"></div>
@@ -995,11 +990,11 @@ const Reader = () => {
                         
                         {navData?.next ? (
                              <Link 
-                               to={`/read/${malId}/${navData.next.id}/${encodeURIComponent(title || '')}/${navData.next.attributes.chapter}`}
+                               to={`/read/${malId}/${navData.next.id}/${encodeURIComponent(title || '')}/${navData.next.chapter}`}
                                className="flex-1 bg-brand-600 hover:bg-brand-500 text-white p-4 rounded-xl text-center transition-all shadow-lg shadow-brand-500/20"
                              >
                                 <div className="text-xs text-brand-200 uppercase font-bold mb-1">Next</div>
-                                <div className="font-bold">Chapter {navData.next.attributes.chapter}</div>
+                                <div className="font-bold">Chapter {navData.next.chapter}</div>
                              </Link>
                         ) : (
                             <div className="flex-1 opacity-50 bg-white/5 p-4 rounded-xl text-center">
