@@ -26,22 +26,13 @@ export interface MangaDexManga {
   };
 }
 
-export interface MangaDexChapter {
-  id: string;
-  provider: 'mangadex' | 'comick';
-  attributes: {
-    volume: string | null;
-    chapter: string;
-    title: string | null;
-    publishAt: string;
-    pages: number;
-    externalUrl?: string | null;
-    translatedLanguage?: string;
-  };
-  relationships?: {
-    id: string;
-    type: string;
-  }[];
+export interface Chapter {
+  id: string; // HID from Comick
+  volume: string | null;
+  chapter: string;
+  title: string | null;
+  publishAt: string;
+  lang: string;
 }
 
 export interface User {
